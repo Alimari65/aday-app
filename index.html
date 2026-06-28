@@ -1481,15 +1481,24 @@ function loadGoogleScripts() {
         if (resp.error) { showToast('Google sign-in failed'); return; }
         googleAccessToken = resp.access_token;
         localStorage.setItem('aday_google_token', googleAccessToken);
+        // Store expiry time (tokens last 1 hour)
+        localStorage.setItem('aday_google_expiry', Date.now() + 3500000);
         updateGoogleBtn();
         showToast('✅ Connected to Google Calendar!');
         syncAllToGoogle();
       }
     });
     gisInited = true;
-    // Restore token if saved
+    // Restore token if not expired
     const saved = localStorage.getItem('aday_google_token');
-    if (saved) { googleAccessToken = saved; updateGoogleBtn(); }
+    const expiry = localStorage.getItem('aday_google_expiry');
+    if (saved && expiry && Date.now() < parseInt(expiry)) {
+      googleAccessToken = saved;
+    } else {
+      localStorage.removeItem('aday_google_token');
+      localStorage.removeItem('aday_google_expiry');
+    }
+    updateGoogleBtn();
   };
   document.head.appendChild(gisScript);
 }
@@ -1497,7 +1506,6 @@ function loadGoogleScripts() {
 function signInGoogle() {
   if (!gisInited) { showToast('Loading Google...'); return; }
   if (googleAccessToken) {
-    // Already connected — ask to disconnect
     if (confirm('Disconnect from Google Calendar?')) {
       googleAccessToken = null;
       localStorage.removeItem('aday_google_token');
@@ -1506,7 +1514,12 @@ function signInGoogle() {
     }
     return;
   }
-  tokenClient.requestAccessToken({ prompt: 'consent' });
+  tokenClient.requestAccessToken({ prompt: '' });
+}
+
+function reAuthGoogle() {
+  if (!gisInited) return;
+  tokenClient.requestAccessToken({ prompt: '' });
 }
 
 function updateGoogleBtn() {
@@ -1573,6 +1586,8 @@ async function syncTaskToGoogle(task) {
         googleAccessToken = null;
         localStorage.removeItem('aday_google_token');
         updateGoogleBtn();
+        showToast('Google session expired — please reconnect');
+        reAuthGoogle();
       }
     }
   } catch(e) { console.error('Google sync error:', e); }

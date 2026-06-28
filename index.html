@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1521,6 +1522,14 @@ async function syncTaskToGoogle(task) {
   try {
     const startDT = new Date(`${task.date}T${task.time}:00`);
     const endDT = new Date(startDT.getTime() + (task.duration || 60) * 60000);
+
+    // Build recurrence rule
+    const recurrenceMap = {
+      'daily': ['RRULE:FREQ=DAILY'],
+      'weekly': ['RRULE:FREQ=WEEKLY'],
+      'monthly': ['RRULE:FREQ=MONTHLY']
+    };
+
     const event = {
       summary: task.name,
       description: `A Day App Task\nPriority: ${task.priority}\nImportance: ${task.importance}/10${task.notes ? '\nNotes: ' + task.notes : ''}`,
@@ -1532,16 +1541,19 @@ async function syncTaskToGoogle(task) {
       },
       extendedProperties: { private: { adayId: task.id } }
     };
-    // Check if already synced
+
+    // Add recurrence if set
+    if (task.recurring && task.recurring !== 'none' && recurrenceMap[task.recurring]) {
+      event.recurrence = recurrenceMap[task.recurring];
+    }
+
     if (task.googleEventId) {
-      // Update existing
       await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${task.googleEventId}`, {
         method: 'PUT',
         headers: { 'Authorization': `Bearer ${googleAccessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(event)
       });
     } else {
-      // Create new
       const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${googleAccessToken}`, 'Content-Type': 'application/json' },

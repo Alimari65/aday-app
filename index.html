@@ -465,6 +465,12 @@ if ('serviceWorker' in navigator) {
           Connect
         </button>
       </div>
+      <div id="google-synced-banner" style="margin:12px 16px 0; padding:12px 16px; background:#DCFCE7; border-radius:14px; display:none; align-items:center; justify-content:space-between;">
+        <div style="font-size:13px; color:#16A34A; font-weight:600;">✅ Google Calendar Connected</div>
+        <button onclick="syncAllToGoogle()" style="padding:8px 14px; border-radius:20px; border:none; cursor:pointer; font-size:13px; font-weight:600; background:#16A34A; color:white;">
+          Sync All
+        </button>
+      </div>
       <div class="calendar-header">
         <button class="cal-arrow" onclick="calPrevMonth()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>
@@ -1506,14 +1512,14 @@ function signInGoogle() {
 function updateGoogleBtn() {
   const btn = document.getElementById('google-sync-btn');
   const banner = document.getElementById('google-cal-banner');
-  if (!btn || !banner) return;
+  const syncedBanner = document.getElementById('google-synced-banner');
+  if (!banner || !syncedBanner) return;
   if (googleAccessToken) {
     banner.style.display = 'none';
+    syncedBanner.style.display = 'flex';
   } else {
     banner.style.display = 'flex';
-    btn.textContent = 'Connect';
-    btn.style.background = 'var(--barca-blue)';
-    btn.style.color = 'white';
+    syncedBanner.style.display = 'none';
   }
 }
 
@@ -1574,6 +1580,10 @@ async function syncTaskToGoogle(task) {
 
 async function syncAllToGoogle() {
   if (!googleAccessToken) return;
+  showToast('Syncing to Google Calendar...');
+  // Clear existing event IDs to force fresh creation
+  tasks.forEach(t => { delete t.googleEventId; });
+  save();
   let count = 0;
   for (const task of tasks) {
     if (task.date && task.time) {

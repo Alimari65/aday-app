@@ -617,6 +617,9 @@ if ('serviceWorker' in navigator) {
         <textarea class="form-input" id="task-notes-input" rows="2" placeholder="Any additional info..."></textarea>
       </div>
       <button class="btn-primary" onclick="saveTask()">Save Task</button>
+      <button id="gcal-add-btn" class="btn-secondary" onclick="addCurrentTaskToGCal()" style="display:none; background:#EFF6FF; color:var(--barca-blue); margin-top:8px;">
+        📅 Add to Google Calendar
+      </button>
       <button class="btn-secondary" id="delete-task-btn" onclick="deleteCurrentTask()" style="display:none; color:var(--barca-red);">Delete Task</button>
     </div>
   </div>
@@ -649,6 +652,9 @@ if ('serviceWorker' in navigator) {
         </button>
       </div>
       <button class="btn-secondary" onclick="deleteDetailTask()" style="color:var(--barca-red); margin-top:4px;">Delete Task</button>
+      <button class="btn-secondary" id="detail-gcal-btn" onclick="addDetailTaskToGCal()" style="background:#EFF6FF; color:var(--barca-blue); margin-top:8px;">
+        📅 Add to Google Calendar
+      </button>
     </div>
   </div>
 </div>
@@ -1199,6 +1205,7 @@ function openAddTask(preDate) {
   document.getElementById('importance-input').value = 5;
   document.getElementById('importance-val').textContent = '5';
   document.getElementById('delete-task-btn').style.display = 'none';
+  document.getElementById('gcal-add-btn').style.display = 'none';
   selectPriority('medium');
   selectRecurring('none');
   openModal('modal-task');
@@ -1216,6 +1223,8 @@ function openEditTask(id) {
   document.getElementById('importance-input').value = t.importance || 5;
   document.getElementById('importance-val').textContent = t.importance || 5;
   document.getElementById('delete-task-btn').style.display = 'block';
+  document.getElementById('gcal-add-btn').style.display = 'block';
+  lastSavedTask = t;
   selectPriority(t.priority || 'medium');
   selectRecurring(t.recurring || 'none');
   closeModal('modal-task-detail');
@@ -1259,11 +1268,42 @@ function saveTask() {
     tasks.push(task);
     scheduleTaskNotification(task);
   }
-  save(); closeModal('modal-task'); renderAll();
+  save(); renderAll();
   showToast(currentEditId ? 'Task updated!' : 'Task added!');
-  // Sync to Google Calendar
-  if (googleAccessToken) syncTaskToGoogle(task);
+  // Show Google Calendar button
+  lastSavedTask = task;
+  document.getElementById('gcal-add-btn').style.display = 'block';
 }
+let lastSavedTask = null;
+
+function buildGCalUrl(task) {
+  if (!task || !task.date || !task.time) return null;
+  const start = new Date(`${task.date}T${task.time}:00`);
+  const end = new Date(start.getTime() + (task.duration || 60) * 60000);
+  const fmt = d => d.toISOString().replace(/-|:|\.\d+/g, '');
+  const recur = task.recurring === 'daily' ? '&recur=RRULE:FREQ%3DDAILY'
+    : task.recurring === 'weekly' ? '&recur=RRULE:FREQ%3DWEEKLY'
+    : task.recurring === 'monthly' ? '&recur=RRULE:FREQ%3DMONTHLY' : '';
+  const details = encodeURIComponent(`Priority: ${task.priority} | Importance: ${task.importance}/10${task.notes ? '\n' + task.notes : ''}`);
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(task.name)}&dates=${fmt(start)}/${fmt(end)}&details=${details}${recur}`;
+}
+
+function addCurrentTaskToGCal() {
+  const url = buildGCalUrl(lastSavedTask);
+  if (!url) { showToast('Please set a date and time first'); return; }
+  window.open(url, '_blank');
+  closeModal('modal-task');
+}
+
+function addDetailTaskToGCal() {
+  if (!currentDetailId) return;
+  const t = tasks.find(x => x.id === currentDetailId.id);
+  if (!t) return;
+  const url = buildGCalUrl(t);
+  if (!url) { showToast('Task needs a date and time'); return; }
+  window.open(url, '_blank');
+}
+
 function deleteCurrentTask() {
   if (!currentEditId) return;
   tasks = tasks.filter(x => x.id !== currentEditId);
@@ -1447,16 +1487,7 @@ function addSampleData() {
     { id:uid(), name:'Finish proposal', priority:'high', importance:9, date:tomorrow, time:'09:00', duration:120, recurring:'none', notes:'', doneOn:[], createdAt:new Date().toISOString() },
     { id:uid(), name:'Read book', priority:'low', importance:4, date:tomorrow, time:'21:00', duration:30, recurring:'daily', notes:'', doneOn:[], createdAt:new Date().toISOString() },
   ];
-  // Sample score history
-  for (let i = 30; i >= 1; i--) {
-    const d = new Date(); d.setDate(d.getDate()-i);
-    const dk = dateKey(d);
-    const s = Math.floor(Math.random()*60)+30;
-    scoreHistory.daily[dk] = s;
-    scoreHistory.weekly[getWeekKey(d)] = Math.floor(Math.random()*50)+40;
-    scoreHistory.monthly[getMonthKey(d)] = Math.floor(Math.random()*40)+50;
-    scoreHistory.annual[getYearKey(d)] = Math.floor(Math.random()*30)+60;
-  }
+  // Sample score history — cleared, starting fresh from today
   save();
 }
 
@@ -1640,6 +1671,9 @@ async function syncAllToGoogle() {
 // ============================
 window.addEventListener('load', () => {
   load();
+  // Reset score history to start fresh
+  scoreHistory = { daily:{}, weekly:{}, monthly:{}, annual:{} };
+  save();
   addSampleData();
   updateGreeting();
   renderWeekStrip();

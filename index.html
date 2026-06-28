@@ -1470,7 +1470,6 @@ let tokenClient;
 let googleAccessToken = null;
 
 function loadGoogleScripts() {
-  // Load GIS
   const gisScript = document.createElement('script');
   gisScript.src = 'https://accounts.google.com/gsi/client';
   gisScript.onload = () => {
@@ -1481,20 +1480,19 @@ function loadGoogleScripts() {
         if (resp.error) { showToast('Google sign-in failed'); return; }
         googleAccessToken = resp.access_token;
         localStorage.setItem('aday_google_token', googleAccessToken);
-        // Store expiry time (tokens last 1 hour)
-        localStorage.setItem('aday_google_expiry', Date.now() + 3500000);
+        localStorage.setItem('aday_google_expiry', (Date.now() + 3500000).toString());
         updateGoogleBtn();
         showToast('✅ Connected to Google Calendar!');
         syncAllToGoogle();
       }
     });
     gisInited = true;
-    // Restore token if not expired
     const saved = localStorage.getItem('aday_google_token');
-    const expiry = localStorage.getItem('aday_google_expiry');
-    if (saved && expiry && Date.now() < parseInt(expiry)) {
+    const expiry = parseInt(localStorage.getItem('aday_google_expiry') || '0');
+    if (saved && Date.now() < expiry) {
       googleAccessToken = saved;
     } else {
+      googleAccessToken = null;
       localStorage.removeItem('aday_google_token');
       localStorage.removeItem('aday_google_expiry');
     }
@@ -1509,6 +1507,7 @@ function signInGoogle() {
     if (confirm('Disconnect from Google Calendar?')) {
       googleAccessToken = null;
       localStorage.removeItem('aday_google_token');
+      localStorage.removeItem('aday_google_expiry');
       updateGoogleBtn();
       showToast('Disconnected from Google Calendar');
     }
@@ -1517,9 +1516,33 @@ function signInGoogle() {
   tokenClient.requestAccessToken({ prompt: '' });
 }
 
-function reAuthGoogle() {
-  if (!gisInited) return;
-  tokenClient.requestAccessToken({ prompt: '' });
+async function ensureValidToken() {
+  if (!googleAccessToken) return false;
+  const expiry = parseInt(localStorage.getItem('aday_google_expiry') || '0');
+  if (Date.now() >= expiry) {
+    // Token expired — refresh silently
+    return new Promise((resolve) => {
+      const originalCallback = tokenClient.callback;
+      tokenClient.callback = (resp) => {
+        tokenClient.callback = originalCallback;
+        if (resp.error) { 
+          googleAccessToken = null;
+          localStorage.removeItem('aday_google_token');
+          localStorage.removeItem('aday_google_expiry');
+          updateGoogleBtn();
+          showToast('Google session expired — please reconnect');
+          resolve(false); 
+          return; 
+        }
+        googleAccessToken = resp.access_token;
+        localStorage.setItem('aday_google_token', googleAccessToken);
+        localStorage.setItem('aday_google_expiry', (Date.now() + 3500000).toString());
+        resolve(true);
+      };
+      tokenClient.requestAccessToken({ prompt: '' });
+    });
+  }
+  return true;
 }
 
 function updateGoogleBtn() {
@@ -1538,6 +1561,8 @@ function updateGoogleBtn() {
 
 async function syncTaskToGoogle(task) {
   if (!googleAccessToken || !task.date || !task.time) return;
+  const valid = await ensureValidToken();
+  if (!valid) return;
   try {
     const startDT = new Date(`${task.date}T${task.time}:00`);
     const endDT = new Date(startDT.getTime() + (task.duration || 60) * 60000);

@@ -954,10 +954,18 @@ function renderTasksTab() {
   const today = new Date();
   const dk = dateKey(today);
   let filtered = tasks;
+  const todayDk = todayKey();
+  // For recurring tasks, the "relevant" date to check/mark is today (if today matches the recurrence), otherwise the original date
+  function relevantDate(t) {
+    if (t.recurring === 'none') return t.date;
+    // Does this recurring task occur today?
+    const occursToday = getTasksForDate(todayDk).some(x => x.id === t.id);
+    return occursToday ? todayDk : t.date;
+  }
   if (taskView === 'my') {
-    filtered = tasks.filter(t => !isTaskDone(t, t.date) || t.recurring !== 'none');
+    filtered = tasks.filter(t => !isTaskDone(t, relevantDate(t)) || t.recurring !== 'none');
   } else {
-    filtered = tasks.filter(t => isTaskDone(t, t.date));
+    filtered = tasks.filter(t => isTaskDone(t, relevantDate(t)));
   }
   if (!filtered.length) {
     container.innerHTML = `<div class="empty-state" style="padding:40px 20px;"><p>${taskView==='my'?'No tasks yet. Tap + to add one!':'No completed tasks yet.'}</p></div>`;
@@ -971,15 +979,16 @@ function renderTasksTab() {
     if (!byPriority[p].length) return;
     html += `<div class="priority-section"><div class="priority-label">${labels[p]}</div><div class="priority-card">`;
     html += byPriority[p].map(t => {
-      const done = isTaskDone(t, t.date);
-      return `<div class="priority-task-item" onclick="openTaskDetail('${t.id}','${t.date}')">
+      const rd = relevantDate(t);
+      const done = isTaskDone(t, rd);
+      return `<div class="priority-task-item" onclick="openTaskDetail('${t.id}','${rd}')">
         <div class="priority-bar ${t.priority}"></div>
-        <div class="p-checkbox ${done?'checked':''}" onclick="event.stopPropagation(); toggleTaskDone('${t.id}','${t.date}')">
+        <div class="p-checkbox ${done?'checked':''}" onclick="event.stopPropagation(); toggleTaskDone('${t.id}','${rd}')">
           ${done?`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>`:''}
         </div>
         <div class="p-task-info">
           <div class="p-task-name${done?' done':''}">${t.name}</div>
-          <div class="p-task-date">${formatDateLabel(new Date(t.date+'T00:00:00'))}${t.time?' · '+formatTime(t.time):''}${t.recurring!=='none'?' · 🔁':''}</div>
+          <div class="p-task-date">${formatDateLabel(new Date(rd+'T00:00:00'))}${t.time?' · '+formatTime(t.time):''}${t.recurring!=='none'?' · 🔁':''}</div>
         </div>
         <svg class="p-task-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg>
       </div>`;
@@ -999,8 +1008,9 @@ function toggleTaskDone(id, dk) {
   if (!t) return;
   if (!t.doneOn) t.doneOn = [];
   const idx = t.doneOn.indexOf(dk);
-  if (idx === -1) { t.doneOn.push(dk); computeDailyScore(dk); }
+  if (idx === -1) { t.doneOn.push(dk); }
   else { t.doneOn.splice(idx, 1); }
+  computeDailyScore(dk);
   save(); renderAll();
 }
 

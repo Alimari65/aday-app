@@ -1718,9 +1718,6 @@ async function syncAllToGoogle() {
 // ============================
 window.addEventListener('load', () => {
   load();
-  // Reset score history to start fresh
-  scoreHistory = { daily:{}, weekly:{}, monthly:{}, annual:{} };
-  save();
   addSampleData();
   updateGreeting();
   renderWeekStrip();

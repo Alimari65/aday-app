@@ -1017,27 +1017,64 @@ function toggleTaskDone(id, dk) {
 // ============================
 // SCORE
 // ============================
-function computeDailyScore(dk) {
-  const dayTasks = getTasksForDate(dk);
-  if (!dayTasks.length) return 0;
+function computeScoreForPeriod(dks) {
   let totalWeight = 0, doneWeight = 0;
-  dayTasks.forEach(t => {
-    const w = t.importance || 5;
-    totalWeight += w;
-    if (isTaskDone(t, dk)) doneWeight += w;
+  dks.forEach(dk => {
+    const dayTasks = getTasksForDate(dk);
+    dayTasks.forEach(t => {
+      const w = t.importance || 5;
+      totalWeight += w;
+      if (isTaskDone(t, dk)) doneWeight += w;
+    });
   });
-  const score = totalWeight > 0 ? Math.round((doneWeight / totalWeight) * 100) : 0;
+  return totalWeight > 0 ? Math.round((doneWeight / totalWeight) * 100) : 0;
+}
+
+function getDaysInWeek(wk) {
+  const [year, week] = wk.split('-W').map(Number);
+  const jan1 = new Date(year, 0, 1);
+  const startDay = new Date(jan1.getTime() + (week - 1) * 7 * 86400000);
+  // adjust to Monday
+  const day = startDay.getDay();
+  startDay.setDate(startDay.getDate() - (day === 0 ? 6 : day - 1));
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(startDay); d.setDate(startDay.getDate() + i);
+    days.push(dateKey(d));
+  }
+  return days;
+}
+
+function getDaysInMonth(mk) {
+  const [year, month] = mk.split('-').map(Number);
+  const days = [];
+  const last = new Date(year, month, 0).getDate();
+  for (let d = 1; d <= last; d++) {
+    days.push(`${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
+  }
+  return days;
+}
+
+function getDaysInYear(yk) {
+  const year = parseInt(yk);
+  const days = [];
+  for (let m = 1; m <= 12; m++) {
+    const last = new Date(year, m, 0).getDate();
+    for (let d = 1; d <= last; d++) {
+      days.push(`${year}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
+    }
+  }
+  return days;
+}
+
+function computeDailyScore(dk) {
+  const score = computeScoreForPeriod([dk]);
   scoreHistory.daily[dk] = score;
-  // Aggregate weekly/monthly/annual
   const d = new Date(dk + 'T00:00:00');
   const wk = getWeekKey(d), mk = getMonthKey(d), yk = getYearKey(d);
-  // weekly: avg of daily scores in week
-  const weekScores = Object.entries(scoreHistory.daily).filter(([k]) => getWeekKey(new Date(k+'T00:00:00')) === wk).map(([,v])=>v);
-  scoreHistory.weekly[wk] = Math.round(weekScores.reduce((a,b)=>a+b,0)/weekScores.length);
-  const monthScores = Object.entries(scoreHistory.daily).filter(([k]) => getMonthKey(new Date(k+'T00:00:00')) === mk).map(([,v])=>v);
-  scoreHistory.monthly[mk] = Math.round(monthScores.reduce((a,b)=>a+b,0)/monthScores.length);
-  const yearScores = Object.entries(scoreHistory.daily).filter(([k]) => getYearKey(new Date(k+'T00:00:00')) === yk).map(([,v])=>v);
-  scoreHistory.annual[yk] = Math.round(yearScores.reduce((a,b)=>a+b,0)/yearScores.length);
+  scoreHistory.weekly[wk] = computeScoreForPeriod(getDaysInWeek(wk));
+  scoreHistory.monthly[mk] = computeScoreForPeriod(getDaysInMonth(mk));
+  scoreHistory.annual[yk] = computeScoreForPeriod(getDaysInYear(yk));
   save();
   return score;
 }
